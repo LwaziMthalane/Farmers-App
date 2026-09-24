@@ -90,3 +90,4 @@ jobs:
           name: farmer-costing-apk
           path: ./bin/*.apk
           retention-days: 14
+          
