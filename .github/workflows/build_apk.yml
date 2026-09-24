@@ -1,0 +1,84 @@
+name: Build Farmer APK with Proper Signing
+
+on:
+  push:
+    branches: [ main ]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-22.04
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Show keystore / generate if missing
+        run: |
+          mkdir -p android
+          if [ ! -f android/debug.keystore ]; then
+            echo "⚠️ android/debug.keystore not in repo - generating a NEW one."
+            echo "   Commit it to keep the same signature across builds (needed to update an installed app)."
+            keytool -genkey -v \
+              -keystore android/debug.keystore \
+              -storepass android -alias androiddebugkey -keypass android \
+              -keyalg RSA -keysize 2048 -validity 10000 \
+              -dname "CN=Android Debug,O=Android,C=US"
+          fi
+          ls -la android/debug.keystore
+          echo "MD5: $(md5sum android/debug.keystore | cut -d' ' -f1)"
+
+      - name: Build APK using Buildozer Action
+        uses: digreatbrian/buildozer-action@v2
+        with:
+          buildozer-cmd: |
+            buildozer -v android debug
+
+      - name: Align and sign with apksigner
+        run: |
+          echo "📥 Installing Android SDK tools..."
+          wget -q https://dl.google.com/android/repository/commandlinetools-linux-9477386_latest.zip
+          unzip -q commandlinetools-linux-*.zip
+          mkdir -p android-sdk/cmdline-tools
+          mv cmdline-tools android-sdk/cmdline-tools/latest
+
+          export ANDROID_SDK_ROOT=$PWD/android-sdk
+          export PATH=$PATH:$ANDROID_SDK_ROOT/cmdline-tools/latest/bin
+
+          echo "📦 Installing build-tools..."
+          yes | sdkmanager --install "build-tools;34.0.0" --sdk_root=$ANDROID_SDK_ROOT
+          export PATH=$PATH:$ANDROID_SDK_ROOT/build-tools/34.0.0
+
+          APK=$(find ./bin -name "*.apk" | head -1)
+          if [ ! -f "$APK" ]; then
+            echo "❌ No APK found!"
+            exit 1
+          fi
+          echo "📦 APK: $(basename "$APK")"
+
+          echo "🧹 Removing old signature..."
+          zip -d "$APK" "META-INF/*" 2>/dev/null || true
+
+          echo "📐 Aligning..."
+          zipalign -f -p 4 "$APK" "$APK.aligned"
+          mv "$APK.aligned" "$APK"
+
+          echo "🔏 Signing..."
+          apksigner sign \
+            --ks android/debug.keystore \
+            --ks-pass pass:android \
+            --key-pass pass:android \
+            --ks-key-alias androiddebugkey \
+            "$APK"
+
+          echo "🔑 Verifying..."
+          apksigner verify --print-certs "$APK" | head -20
+          echo "📏 Size: $(wc -c < "$APK") bytes"
+          echo "✅ Signed with apksigner"
+
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: farmer-costing-apk
+          path: ./bin/*.apk
+          retention-days: 14
