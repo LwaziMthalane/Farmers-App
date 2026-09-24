@@ -17,10 +17,10 @@ android.private_storage = True
 android.archs = arm64-v8a,armeabi-v7a
 android.allow_backup = True
 
-# Use the NDK the runner already has, skip the 28c download
+# Use the NDK the GitHub runner already has (from your log: 27.3.13750724)
 android.ndk = 27.3.13750724
 
-# Signing — needed for the apksigner step
+# Signing — needed by the apksigner step
 android.keystore = android/debug.keystore
 android.keystore.password = android
 android.keyalias = androiddebugkey
