@@ -18,7 +18,7 @@ android.archs = arm64-v8a,armeabi-v7a
 android.allow_backup = True
 
 # Use the NDK the GitHub runner already has (from your log: 27.3.13750724)
-android.ndk = 27.3.13750724
+android.ndk = 27d
 
 # Signing — needed by the apksigner step
 android.keystore = android/debug.keystore
