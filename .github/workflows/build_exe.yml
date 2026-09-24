@@ -1,4 +1,4 @@
-name: Build Kivy APK with Proper Signing
+name: Build Farmer APK
 
 on:
   push:
@@ -10,129 +10,103 @@ jobs:
     runs-on: ubuntu-22.04
 
     steps:
-      - name: Checkout repository
+      - name: Checkout
         uses: actions/checkout@v4
 
-      - name: DEBUG - Show project structure
-        run: |
-          echo "=== Project root ==="
-          ls -la
-          echo ""
-          echo "=== buildozer.spec ==="
-          cat buildozer.spec
-          echo ""
-          echo "=== main.py present? ==="
-          test -f main.py && echo "YES: main.py exists" || echo "NO: main.py MISSING"
-          echo ""
-          echo "=== Python files (depth 2) ==="
-          find . -maxdepth 2 -name "*.py" -not -path "./.git/*"
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
 
-      - name: Generate debug keystore if missing
+      - name: Install system dependencies
         run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            git zip unzip openjdk-17-jdk \
+            autoconf libtool pkg-config \
+            zlib1g-dev libncurses5-dev libncursesw5-dev \
+            libtinfo5 cmake libffi-dev libssl-dev \
+            automake build-essential ccache
+
+      - name: Install Buildozer
+        run: |
+          python -m pip install --upgrade pip
+          pip install buildozer cython==0.29.36 virtualenv
+
+      - name: Generate debug keystore (if missing)
+        run: |
+          mkdir -p android
           if [ ! -f android/debug.keystore ]; then
-            echo "🔐 Generating debug keystore..."
-            mkdir -p android
             keytool -genkey -v \
               -keystore android/debug.keystore \
               -storepass android \
               -alias androiddebugkey \
               -keypass android \
-              -keyalg RSA \
-              -keysize 2048 \
-              -validity 10000 \
+              -keyalg RSA -keysize 2048 -validity 10000 \
               -dname "CN=Android Debug,O=Android,C=US"
-          else
-            echo "🔐 Using existing keystore"
           fi
-          md5sum android/debug.keystore
 
-      - name: Build APK using Buildozer Action
+      # Pre-seed buildozer caches so the second run is fast
+      - name: Cache buildozer globals
+        uses: actions/cache@v4
+        with:
+          path: ~/.buildozer
+          key: buildozer-global-${{ hashFiles('buildozer.spec') }}
+          restore-keys: buildozer-global-
+
+      - name: Cache buildozer project
+        uses: actions/cache@v4
+        with:
+          path: .buildozer
+          key: buildozer-project-${{ github.sha }}
+          restore-keys: buildozer-project-
+
+      - name: Build APK (full log captured)
         id: build
         continue-on-error: true
-        uses: digreatbrian/buildozer-action@v2
-        with:
-          buildozer-cmd: buildozer -v android debug
+        run: |
+          set -o pipefail
+          yes | buildozer -v android debug 2>&1 | tee buildozer-full.log
+          exit ${PIPESTATUS[0]}
 
-      - name: DEBUG - Dump buildozer logs (ALWAYS runs)
+      - name: Show build result + tail of log (ALWAYS)
         if: always()
         run: |
-          echo "=== Buildozer outcome: ${{ steps.build.outcome }} ==="
-          echo ""
-          echo "=== bin/ ==="
-          ls -la bin/ 2>/dev/null || echo "(no bin/)"
-          echo ""
-          echo "=== .buildozer log files ==="
-          find .buildozer -type f -name "*.log" 2>/dev/null | head -20
-          echo ""
-          echo "=== TAIL of every log ==="
-          find .buildozer -type f -name "*.log" -exec sh -c '
-            echo "--------- {} ---------"
-            tail -150 "{}"
-          ' \; 2>/dev/null
-
-      - name: PROPER SIGNING with apksigner
-        if: success()
-        run: |
-          echo "📥 Installing Android SDK tools..."
-          wget -q https://dl.google.com/android/repository/commandlinetools-linux-9477386_latest.zip
-          unzip -q commandlinetools-linux-*.zip
-          mkdir -p android-sdk/cmdline-tools
-          mv cmdline-tools android-sdk/cmdline-tools/latest
-
-          export ANDROID_SDK_ROOT=$PWD/android-sdk
-          export PATH=$PATH:$ANDROID_SDK_ROOT/cmdline-tools/latest/bin
-
-          echo "📦 Installing build-tools..."
-          yes | sdkmanager --install "build-tools;34.0.0" --sdk_root=$ANDROID_SDK_ROOT
-          export PATH=$PATH:$ANDROID_SDK_ROOT/build-tools/34.0.0
-
-          APK=$(find ./bin -name "*.apk" | head -1)
-          if [ ! -f "$APK" ]; then
-            echo "❌ No APK found!"
-            exit 1
-          fi
-
-          echo "📦 APK: $(basename "$APK")"
-          zip -d "$APK" "META-INF/*" 2>/dev/null || true
-
-          echo "🔏 Signing..."
-          apksigner sign \
-            --ks android/debug.keystore \
-            --ks-pass pass:android \
-            --key-pass pass:android \
-            --ks-key-alias androiddebugkey \
-            "$APK"
-
-          echo "✅ Signed with apksigner"
-
-      - name: Check final APK
-        if: always()
-        run: |
-          APK=$(find ./bin -name "*.apk" 2>/dev/null | head -1)
-          if [ -f "$APK" ]; then
-            echo "📱 Final APK: $(basename "$APK")"
-            echo "📏 Size: $(wc -c < "$APK") bytes"
+          echo "==============================================="
+          echo " Buildozer outcome: ${{ steps.build.outcome }}"
+          echo "==============================================="
+          if [ -f buildozer-full.log ]; then
+            echo ""
+            echo "===== ERROR / TRACEBACK LINES ====="
+            grep -n -iE "error|traceback|exception|fatal|failed|no such file|not found" \
+              buildozer-full.log | tail -60 || echo "(no matches)"
+            echo ""
+            echo "===== LAST 250 LINES ====="
+            tail -n 250 buildozer-full.log
           else
-            echo "❌ No APK produced"
+            echo "buildozer-full.log was never created!"
           fi
+          echo ""
+          echo "===== bin/ ====="
+          ls -la bin/ 2>/dev/null || echo "(no bin directory)"
+          echo ""
+          echo "===== .buildozer/ (2 levels) ====="
+          find .buildozer -maxdepth 2 -type d 2>/dev/null || echo "(no .buildozer)"
 
-      - name: Upload APK
+      - name: Upload APK (if built)
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: farmer-costing-apk
-          path: ./bin/*.apk
-          retention-days: 14
+          path: bin/*.apk
           if-no-files-found: warn
+          retention-days: 14
 
-      - name: Upload build logs (for debugging)
+      - name: Upload full build log (ALWAYS)
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: build-logs
-          path: |
-            .buildozer/**/*.log
-            .buildozer/android/platform/build-*/build.log
-            .buildozer/android/platform/build-*/dists/*/build/outputs/logs/*
-          retention-days: 7
+          name: buildozer-full-log
+          path: buildozer-full.log
           if-no-files-found: warn
+          retention-days: 7
