@@ -8,6 +8,11 @@ on:
 jobs:
   build:
     runs-on: ubuntu-22.04
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false        # if one architecture fails, the other still finishes
+      matrix:
+        arch: [ arm64-v8a, armeabi-v7a ]
 
     steps:
       - name: Checkout repository
@@ -27,6 +32,11 @@ jobs:
           fi
           ls -la android/debug.keystore
           echo "MD5: $(md5sum android/debug.keystore | cut -d' ' -f1)"
+
+      - name: Build for a single architecture
+        run: |
+          sed -i "s/^android.archs.*/android.archs = ${{ matrix.arch }}/" buildozer.spec
+          grep -n "^android.archs" buildozer.spec
 
       - name: Build APK using Buildozer Action
         uses: digreatbrian/buildozer-action@v2
@@ -79,6 +89,6 @@ jobs:
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
-          name: farmer-costing-apk
+          name: farmer-costing-${{ matrix.arch }}
           path: ./bin/*.apk
           retention-days: 14
