@@ -13,7 +13,11 @@ android.minapi = 21
 android.accept_sdk_license = True
 android.private_storage = True
 android.archs = arm64-v8a,armeabi-v7a
-
+# Signing (required for consistent debug signing across updates)
+android.keystore = android/debug.keystore
+android.keystore.password = android
+android.keyalias = androiddebugkey
+android.keyalias.password = android
 [buildozer]
 log_level = 2
 warn_on_root = 1
