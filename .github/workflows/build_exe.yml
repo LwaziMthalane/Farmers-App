@@ -1,9 +1,8 @@
-name: Build Farmer APK with Proper Signing
+name: Build Kivy APK with Proper Signing
 
 on:
   push:
     branches: [ main ]
-  workflow_dispatch:
 
 jobs:
   build:
@@ -16,21 +15,8 @@ jobs:
       - name: DEBUG - Show keystore
         run: |
           echo "Keystore in repo:"
-          ls -la android/debug.keystore || echo "(missing — will generate)"
-          if [ -f android/debug.keystore ]; then
-            echo "MD5: $(md5sum android/debug.keystore | cut -d' ' -f1)"
-          fi
-
-      - name: Generate debug keystore if missing
-        run: |
-          mkdir -p android
-          if [ ! -f android/debug.keystore ]; then
-            keytool -genkey -v \
-              -keystore android/debug.keystore \
-              -storepass android -alias androiddebugkey -keypass android \
-              -keyalg RSA -keysize 2048 -validity 10000 \
-              -dname "CN=Android Debug,O=Android,C=US"
-          fi
+          ls -la android/debug.keystore
+          echo "MD5: $(md5sum android/debug.keystore | cut -d' ' -f1)"
 
       - name: Build APK using Buildozer Action
         uses: digreatbrian/buildozer-action@v2
@@ -40,28 +26,35 @@ jobs:
 
       - name: PROPER SIGNING with apksigner
         run: |
+          # Install Android SDK command line tools
           echo "📥 Installing Android SDK tools..."
           wget -q https://dl.google.com/android/repository/commandlinetools-linux-9477386_latest.zip
           unzip -q commandlinetools-linux-*.zip
           mkdir -p android-sdk/cmdline-tools
           mv cmdline-tools android-sdk/cmdline-tools/latest
-
+          
+          # Setup environment
           export ANDROID_SDK_ROOT=$PWD/android-sdk
           export PATH=$PATH:$ANDROID_SDK_ROOT/cmdline-tools/latest/bin
-
+          
+          # Install build-tools (includes apksigner)
           echo "📦 Installing build-tools..."
           yes | sdkmanager --install "build-tools;34.0.0" --sdk_root=$ANDROID_SDK_ROOT
           export PATH=$PATH:$ANDROID_SDK_ROOT/build-tools/34.0.0
-
+          
+          # Find APK
           APK=$(find ./bin -name "*.apk" | head -1)
           if [ ! -f "$APK" ]; then
             echo "❌ No APK found!"
             exit 1
           fi
-
+          
           echo "📦 APK: $(basename "$APK")"
+          
+          # Remove existing signatures
           zip -d "$APK" "META-INF/*" 2>/dev/null || true
-
+          
+          # Sign with apksigner
           echo "🔏 Signing..."
           apksigner sign \
             --ks android/debug.keystore \
@@ -69,7 +62,7 @@ jobs:
             --key-pass pass:android \
             --ks-key-alias androiddebugkey \
             "$APK"
-
+          
           echo "✅ Signed with apksigner"
 
       - name: Check final APK
@@ -78,6 +71,8 @@ jobs:
           if [ -f "$APK" ]; then
             echo "📱 Final APK: $(basename "$APK")"
             echo "📏 Size: $(wc -c < "$APK") bytes"
+            
+            # Check if it has proper signature
             if command -v apksigner >/dev/null 2>&1; then
               echo "🔑 Signature check:"
               apksigner verify --print-certs "$APK" | head -20 || true
@@ -87,7 +82,6 @@ jobs:
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
-          name: farmer-costing-apk
+          name: vowle-properly-signed
           path: ./bin/*.apk
-          retention-days: 14
-          
+          retention-days: 1
