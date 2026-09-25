@@ -46,15 +46,14 @@ class CostingApp(MDApp):
 
         root.add_widget(MDTopAppBar(MDTopAppBarTitle(text="Farmer and Costing"), type="small",
                                     size_hint_y=None, height=dp(56)))
-        root.add_widget(MDLabel(text="Plan costs, revenue and profit for each enterprise.", theme_text_color="Secondary",
-                                size_hint_y=None, height=dp(26)))
+        
 
         content = MDBoxLayout(orientation="vertical", spacing=dp(10), size_hint_y=None)
         content.bind(minimum_height=content.setter("height"))
 
         details_card = MDCard(orientation="vertical", padding=dp(12), spacing=dp(8), radius=[dp(8)],
-                              size_hint_y=None, height=dp(420), elevation=1)
-        details_card.add_widget(MDLabel(text="Enterprise details", font_size=dp(19), size_hint_y=None, height=dp(28)))
+                              size_hint_y=None, height=dp(450), elevation=1)
+        
         selectors = MDBoxLayout(size_hint_y=None, height=dp(46), spacing=dp(8))
         self.category_button_text = MDButtonText(text="CATEGORY: CROP")
         self.category_button = MDButton(self.category_button_text, style="outlined")
@@ -66,13 +65,14 @@ class CostingApp(MDApp):
         self.preset_button.bind(on_release=self.open_preset_menu)
         selectors.add_widget(self.category_button)
         selectors.add_widget(self.unit_button)
-        selectors.add_widget(self.preset_button)
+        
         details_card.add_widget(selectors)
+        details_card.add_widget(self.preset_button)
 
         form = GridLayout(cols=2, spacing=dp(10), padding=(dp(4), dp(4)), size_hint_y=None, height=dp(330))
         self.inputs = {}
-        fields = [("Crop or livestock name", "name", "e.g. Chickens"),
-                  ("Seed or feed cost", "seed_cost", "0.00"),
+        fields = [("Crop/stock name", "name", "e.g. Chickens"),
+                  ("Seed/feed cost", "seed_cost", "0.00"),
                   ("Labor cost", "labor_cost", "0.00"),
                   ("Other costs", "other_cost", "0.00"),
                   ("Target yield", "yield", "0.00"),
@@ -95,11 +95,8 @@ class CostingApp(MDApp):
         calculate.bind(on_release=self.calculate)
         save = MDButton(MDButtonText(text="SAVE ENTRY"), style="filled")
         save.bind(on_release=self.save_entry)
-        export = MDButton(MDButtonText(text="EXPORT CSV"), style="text")
-        export.bind(on_release=self.export_csv)
         actions.add_widget(calculate)
         actions.add_widget(save)
-        actions.add_widget(export)
         actions_card.add_widget(actions)
         content.add_widget(actions_card)
 
@@ -131,11 +128,14 @@ class CostingApp(MDApp):
             callback(value)
             menu.dismiss()
 
-        items = [{"text": value, "on_release": lambda _button, selected=value: choose(selected)}
-                 for value in values]
-        menu = MDDropdownMenu(caller=caller, items=[
-            item for item in items
-        ])
+        items = [
+            {
+                "text": value,
+                "on_release": lambda selected=value: choose(selected),
+            }
+            for value in values
+        ]
+        menu = MDDropdownMenu(caller=caller, items=items)
         menu.open()
 
     def open_category_menu(self, button):
@@ -254,18 +254,7 @@ class CostingApp(MDApp):
             card.add_widget(MDLabel(text=text, theme_text_color="Primary"))
             self.entry_list.add_widget(card)
 
-    def export_csv(self, *_):
-        path = os.path.join(self.user_data_dir, "costings.csv")
-        columns = ["name", "category", "unit", "seed_cost", "labor_cost", "other_cost", "yield", "price",
-                   "expenses", "revenue", "profit", "margin", "saved_at"]
-        try:
-            with open(path, "w", newline="", encoding="utf-8") as data:
-                writer = csv.DictWriter(data, fieldnames=columns)
-                writer.writeheader()
-                writer.writerows(self.records)
-            self.result.text = f"Exported {len(self.records)} entries to:\n{path}"
-        except OSError as error:
-            self.result.text = f"Could not export CSV: {error}"
+    
 
 
 if __name__ == "__main__":
