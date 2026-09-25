@@ -1,8 +1,8 @@
 [app]
 
-title = Farmer and Costing
-package.name = farmercosting
-package.domain = org.farmercosting
+title = Farmer calculator
+package.name = farmercalculator
+package.domain = org.farmercalculator
 
 source.dir = .
 source.include_exts = py,kv,json,txt,png,jpg
@@ -23,6 +23,18 @@ fullscreen = 0
 #
 android.api = 33
 android.minapi = 21
+# (str) Presplash of the application
+presplash.filename = presplash.png
+
+# (str) Icon of the application
+icon.filename = icon.png
+
+# (string) Presplash background color (for android toolchain)
+# Supported formats are: #RRGGBB #AARRGGBB or one of the following names:
+# red, blue, green, black, white, gray, cyan, magenta, yellow, lightgray,
+# darkgray, grey, lightgrey, darkgrey, aqua, fuchsia, lime, maroon, navy,
+# olive, purple, silver, teal.
+android.presplash_color = #7ed957
 
 # ONE architecture per build. Current python-for-android master crashes when it
 # installs pip packages for a second architecture in the same run (broken pip in
