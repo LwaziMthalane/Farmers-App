@@ -44,7 +44,7 @@ class CostingApp(MDApp):
         root.bind(pos=lambda instance, value: setattr(background, "pos", value))
         root.bind(size=lambda instance, value: setattr(background, "size", value))
 
-        root.add_widget(MDTopAppBar(MDTopAppBarTitle(text="Farmer and Costing"), type="small",
+        root.add_widget(MDTopAppBar(MDTopAppBarTitle(text="Farmer calculator"), type="small",
                                     size_hint_y=None, height=dp(56)))
         
 
