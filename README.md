@@ -1,4 +1,4 @@
-# Farmer and Costing
+# Farmer calculator
 
 An offline KivyMD 2 Android app for crop and livestock costing.
 
