@@ -1,4 +1,4 @@
-name: Build Farmer APK with Proper Signing
+name: Build Farmer iOS IPA
 
 on:
   push:
@@ -7,88 +7,80 @@ on:
 
 jobs:
   build:
-    runs-on: ubuntu-22.04
-    timeout-minutes: 60
-    strategy:
-      fail-fast: false        # if one architecture fails, the other still finishes
-      matrix:
-        arch: [ armeabi-v7a ]
+    runs-on: macos-14          # iOS builds need macOS + Xcode
+    timeout-minutes: 90
 
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Show keystore / generate if missing
-        run: |
-          mkdir -p android
-          if [ ! -f android/debug.keystore ]; then
-            echo "⚠️ android/debug.keystore not in repo - generating a NEW one."
-            echo "   Commit it to keep the same signature across builds (needed to update an installed app)."
-            keytool -genkey -v \
-              -keystore android/debug.keystore \
-              -storepass android -alias androiddebugkey -keypass android \
-              -keyalg RSA -keysize 2048 -validity 10000 \
-              -dname "CN=Android Debug,O=Android,C=US"
-          fi
-          ls -la android/debug.keystore
-          echo "MD5: $(md5sum android/debug.keystore | cut -d' ' -f1)"
-
-      - name: Build for a single architecture
-        run: |
-          sed -i "s/^android.archs.*/android.archs = ${{ matrix.arch }}/" buildozer.spec
-          grep -n "^android.archs" buildozer.spec
-
-      - name: Build APK using Buildozer Action
-        uses: digreatbrian/buildozer-action@v2
+      - name: Set up Python
+        uses: actions/setup-python@v5
         with:
-          buildozer-cmd: |
-            buildozer -v android debug
+          python-version: "3.11"
 
-      - name: Align and sign with apksigner
+      - name: Install build dependencies
         run: |
-          echo "📥 Installing Android SDK tools..."
-          wget -q https://dl.google.com/android/repository/commandlinetools-linux-9477386_latest.zip
-          unzip -q commandlinetools-linux-*.zip
-          mkdir -p android-sdk/cmdline-tools
-          mv cmdline-tools android-sdk/cmdline-tools/latest
+          brew install autoconf automake libtool pkg-config
+          python -m pip install --upgrade pip
+          pip install kivy-ios cython==0.29.36
 
-          export ANDROID_SDK_ROOT=$PWD/android-sdk
-          export PATH=$PATH:$ANDROID_SDK_ROOT/cmdline-tools/latest/bin
+      - name: Build Kivy + Python for iOS (slow, ~20-40 min)
+        run: |
+          toolchain build python3 kivy pillow
+          toolchain pip install kivymd
+          # If your app needs more packages, add them here, e.g.:
+          # toolchain pip install requests
 
-          echo "📦 Installing build-tools..."
-          yes | sdkmanager --install "build-tools;34.0.0" --sdk_root=$ANDROID_SDK_ROOT
-          export PATH=$PATH:$ANDROID_SDK_ROOT/build-tools/34.0.0
+      - name: Create Xcode project from the app
+        run: |
+          # main.py must be in the repo root (or change $PWD to the folder that holds it)
+          toolchain create FarmerCosting "$PWD"
+          ls -la
+          find . -maxdepth 3 -name "*.xcodeproj"
 
-          APK=$(find ./bin -name "*.apk" | head -1)
-          if [ ! -f "$APK" ]; then
-            echo "❌ No APK found!"
+      - name: Build unsigned .app with xcodebuild
+        run: |
+          PROJ=$(find . -maxdepth 3 -name "*.xcodeproj" | head -1)
+          SCHEME=$(basename "$PROJ" .xcodeproj)
+          echo "Project: $PROJ  Scheme: $SCHEME"
+
+          xcodebuild \
+            -project "$PROJ" \
+            -scheme "$SCHEME" \
+            -configuration Release \
+            -sdk iphoneos \
+            -derivedDataPath build \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGN_IDENTITY="" \
+            build
+
+      - name: Package .ipa
+        run: |
+          APP=$(find build/Build/Products/Release-iphoneos -maxdepth 1 -name "*.app" | head -1)
+          if [ ! -d "$APP" ]; then
+            echo "❌ No .app found!"
             exit 1
           fi
-          echo "📦 APK: $(basename "$APK")"
+          echo "📦 App: $APP"
+          mkdir -p ipa/Payload
+          cp -R "$APP" ipa/Payload/
+          cd ipa
+          zip -qr ../farmer-costing-unsigned.ipa Payload
+          cd ..
+          ls -la farmer-costing-unsigned.ipa
 
-          echo "🧹 Removing old signature..."
-          zip -d "$APK" "META-INF/*" 2>/dev/null || true
+      # ---------------------------------------------------------------
+      # OPTIONAL: signed build (needs a paid Apple Developer account).
+      # Add these repo secrets: IOS_CERT_P12 (base64), IOS_CERT_PASSWORD,
+      # IOS_PROVISION_PROFILE (base64), IOS_TEAM_ID, then replace the
+      # unsigned xcodebuild step above with a signed archive + export.
+      # ---------------------------------------------------------------
 
-          echo "📐 Aligning..."
-          zipalign -f -p 4 "$APK" "$APK.aligned"
-          mv "$APK.aligned" "$APK"
-
-          echo "🔏 Signing..."
-          apksigner sign \
-            --ks android/debug.keystore \
-            --ks-pass pass:android \
-            --key-pass pass:android \
-            --ks-key-alias androiddebugkey \
-            "$APK"
-
-          echo "🔑 Verifying..."
-          apksigner verify --print-certs "$APK" | head -20
-          echo "📏 Size: $(wc -c < "$APK") bytes"
-          echo "✅ Signed with apksigner"
-
-      - name: Upload APK
+      - name: Upload IPA
         uses: actions/upload-artifact@v4
         with:
-          name: farmer-costing-${{ matrix.arch }}
-          path: ./bin/*.apk
+          name: farmer-costing-ios
+          path: farmer-costing-unsigned.ipa
           retention-days: 14
