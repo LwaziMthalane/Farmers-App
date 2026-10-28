@@ -25,10 +25,34 @@ jobs:
           python -m pip install --upgrade pip
           pip install kivy-ios cython==0.29.36
 
-      - name: Build Kivy + Python for iOS (slow, ~20-40 min)
+      - name: Restore toolchain cache
+        id: cache
+        uses: actions/cache/restore@v4
+        with:
+          path: |
+            dist
+            build
+          key: kivy-ios-toolchain-v1
+
+      - name: Build Kivy + Python for iOS (slow, ~20 min, skipped when cached)
+        if: steps.cache.outputs.cache-hit != 'true'
+        run: toolchain build python3 kivy pillow
+
+      - name: Save toolchain cache (so a later failure doesn't repeat the 20 min)
+        if: steps.cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: |
+            dist
+            build
+          key: kivy-ios-toolchain-v1
+
+      - name: Install KivyMD (pure-Python, no compiled dependencies)
         run: |
-          toolchain build python3 kivy pillow
-          toolchain pip install kivymd
+          # KivyMD 2.x pulls in "materialyoucolor", a compiled package with no
+          # iOS build - that is what broke the last run. KivyMD 1.2.0 is pure
+          # Python. Change this to match the version your app was written for.
+          toolchain pip install "kivymd==1.2.0"
           # If your app needs more packages, add them here, e.g.:
           # toolchain pip install requests
 
