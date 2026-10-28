@@ -58,8 +58,19 @@ jobs:
 
       - name: Create Xcode project from the app
         run: |
-          # main.py must be in the repo root (or change $PWD to the folder that holds it)
-          toolchain create FarmerCosting "$PWD"
+          # Xcode copies the WHOLE app folder into the .app, so give it a clean
+          # folder with only the app (main.py must be in the repo root; if it
+          # lives in a subfolder, change the source below to that folder).
+          mkdir -p app_src
+          rsync -a \
+            --exclude='/app_src' --exclude='/build' --exclude='/dist' \
+            --exclude='/.git' --exclude='/.github' --exclude='/.cache' \
+            --exclude='/.buildozer' --exclude='/bin' --exclude='/android' \
+            --exclude='/*-ios' --exclude='*.keystore' \
+            ./ app_src/
+          ls -la app_src
+          du -sh app_src
+          toolchain create FarmerCosting "$PWD/app_src"
           ls -la
           find . -maxdepth 3 -name "*.xcodeproj"
 
