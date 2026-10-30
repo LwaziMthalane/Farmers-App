@@ -1,0 +1,68 @@
+name: Build Windows EXE
+
+on:
+  push:
+    branches: [ main ]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install pyinstaller
+          pip install https://github.com/kivymd/KivyMD/archive/master.zip
+          pip install kivy
+          pip install plyer
+          pip install pillow
+          pip install requests
+          pip install pyrebase4
+          pip install urllib3==1.26.15
+          pip install httplib2
+          pip install oauth2client
+          pip install pyparsing
+          pip install pyasn1
+          pip install pyasn1_modules
+          pip install rsa
+          pip install gcloud
+          pip install google-api-python-client
+          pip install google-auth
+          pip install protobuf
+          pip install requests_toolbelt==0.9.1
+          pip install python-jwt
+          pip install jwcrypto
+          pip install cryptography
+          pip install typing_extensions
+          pip install pycryptodome
+          pip install materialyoucolor
+          pip install asynckivy
+          pip install asyncgui
+          pip install pyspellchecker
+
+      - name: Build EXE with PyInstaller
+        run: |
+          $env:KIVY_GL_BACKEND = "angle_sdl2"
+          $env:HEADLESS = "1"
+          python -c "from kivy import Config; Config.set('graphics', 'window_state', 'hidden'); Config.set('kivy', 'log_level', 'error'); Config.write()"
+          
+          pyinstaller --onefile --console --name "FarmerAndCosts" `
+            --collect-all kivymd `
+            main.py
+
+      - name: Upload EXE artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: FarmerAndCosts-Windows-EXE
+          path: dist/FarmerAndCosts.exe
+          retention-days: 7
